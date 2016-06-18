@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<style type="text/css">
+		#code_editor{width:335px;float:left;}
+		#draw{margin-left:350px;}
+	}
+</style>
+<title>eval</title>
+<link rel="stylesheet" href="codemirror/docs.css">
+<link rel="stylesheet" href="codemirror/codemirror.css">
+<script src="codemirror/codemirror.js"></script>
+<script src="codemirror/matchbrackets.js"></script>
+<script src="codemirror/continuecomment.js"></script>
+<script src="codemirror/comment.js"></script>
+<script src="codemirror/javascript.js"></script>
+<style type="text/css">
+.CodeMirror {border-top: 1px solid black; border-bottom: 1px solid black;}
+.line-error {
+            background: #FBC2C4 !important;
+            color: #8a1f11 !important;
+        }
+</style>
+<script src="jquery/jquery.min.js" type="text/javascript"></script>
+</head>
+
+<body>
+	<div id="container">
+		<div id="code_editor">
+			<p>setup
+			  <input type="button" name="restart" id="restart" value="restart">
+			</p>
+			<p>
+				<textarea name="setup_code" id="setup_code" cols="45" rows="10"></textarea>
+			</p>
+			<p>loop
+				<input name="loop_ms" type="text" id="loop_ms" value="100" />
+				ms
+			</p>
+			<p>
+				<textarea name="loop_code" id="loop_code" cols="45" rows="20"></textarea>
+			</p>
+			<p>
+				<label for="console_code">console</label>
+				<input type="text" name="console_code" id="console_code" />
+				<input name="clear_log" type="button" id="clear_log" value="clear log" />
+			</p>
+			<p>
+				<textarea name="viewer_log" id="viewer_log" cols="45" rows="5"></textarea>
+            </p>
+		</div>
+		<div id="draw">
+			<canvas id="canvas1" tabindex="1">
+			</canvas>
+		</div>
+	</div>
+	<script type="text/javascript">
+	function get_ms(){
+		return Date.now();
+	}
+	
+	var loop_dirty_time = 0;
+	var loop_dirty = false;
+	var loop_timeout = null;
+	var loop_error = [];
+	var setup_error = [];
+	var last_error_msg = '';
+	
+	//init code editor
+	var setup_editor = CodeMirror.fromTextArea(document.getElementById("setup_code"), {
+		lineNumbers: true,
+		matchBrackets: true,
+		continueComments: "Enter",
+		extraKeys: {"Ctrl-Q": "toggleComment"}
+	});
+	setup_editor.code_type = 'setup';//for debugging
+	setup_editor.on('change',function(){
+		var code = setup_editor.getValue();
+		localStorage['setup_code'] = code;
+		remove_syntax_error(setup_editor);
+		check_syntax_error(setup_editor,code);	
+	});
+	var loop_editor = CodeMirror.fromTextArea(document.getElementById("loop_code"), {
+		lineNumbers: true,
+		matchBrackets: true,
+		continueComments: "Enter",
+		extraKeys: {"Ctrl-Q": "toggleComment"}
+	});
+	loop_editor.code_type = 'loop';//for debugging
+	loop_editor.on('change',function(){
+		var t = get_ms();
+		if(t - loop_dirty_time > 500){
+			eval_loop();
+			loop_dirty_time = t;
+			loop_dirty = false;
+		} else {
+			loop_dirty = true;
+		}
+		localStorage['loop_code'] = loop_editor.getValue();
+	});
+
+	//init canvas
+	var img_caching = {};
+	var img_cached = {};
+	var key_down = {};
+	var mouse_down = false;
+	var mouse_x = 0;
+	var mouse_y = 0;
+	var canvas = document.getElementById('canvas1');
+	var ctx;
+	if(canvas){
+		var ctx = canvas.getContext('2d');
+		if (ctx){
+			ctx.canvas.width = window.innerWidth - 350;
+			ctx.canvas.height = window.innerHeight;
+		}
+	}
+
+	//default setup() and loop()
+	var setup = function(){
+	}
+	var loop = function(){
+	}
+
+	//helper functions
+	function process_url(url){
+		if(url.indexOf('http')!=0){
+			return 'images/'+url;
+		}
+		return url;
+	}
+	function begin_loop(){
+		//clear canvas
+		if (ctx){
+			ctx.clearRect(0,0,window.innerWidth-350,window.innerHeight);
+		}
+		//get last loop time
+		var new_time = Date.now();
+		loop_time = new_time - last_time;
+		last_time = new_time;
+	}
+	function clear_log(){
+		$('#viewer_log').val('');
+		last_error_msg = '';
+	}
+	function exec_console(){
+		try{
+			eval($('#console_code').val());
+		}catch(e){
+		}
+	}
+	function log_keydown(e){
+		var k = String.fromCharCode(e.keyCode);
+		key_down[k] = true;
+	}
+	function log_keyup(e){
+		var k = String.fromCharCode(e.keyCode);
+		delete key_down[k];
+	}
+	function log_mousedown(e){
+		if(canvas){
+			mouse_down = true;
+			var rect = canvas.getBoundingClientRect();
+			mouse_x = e.clientX - rect.left;
+			mouse_y = e.clientY - rect.top;
+		}else{
+			mouse_down = false;
+		}
+	}
+	function log_mouseup(e){
+		mouse_down = false;
+	}
+
+
+	//main logic
+	function stop_timer(){
+		if(loop_timeout){
+			clearTimeout(loop_timeout);
+		}
+	}
+	function begin_timer(delay){
+		if(loop_dirty){
+			var t = get_ms();
+			if(t - loop_dirty_time > 500){
+				loop_dirty_time = t;
+				loop_dirty = false;
+				if (eval_loop()){
+					return;
+				}
+			}
+		}
+		loop_timeout = setTimeout(function(){
+			var dt = Date.now() - last_time;
+			var target_dt = $('#loop_ms').val();
+			var overtime = dt - target_dt;
+			if (overtime < 0) overtime = 0;
+			dt = target_dt - overtime;
+			if (dt < 0) dt = 0;
+			loop();
+			begin_timer(dt);
+		}, delay);
+	}
+	function restart_loop(){
+		stop_timer();
+		begin_timer($('#loop_ms').val());
+	}
+	
+	function remove_syntax_error(editor){
+		if(editor.code_type === 'setup'){
+			setup_error.forEach(function(mark){
+				editor.removeLineClass(mark,'background','line-error');
+			});
+			setup_error.length = 0;
+		} else if (editor.code_type === 'loop'){
+			loop_error.forEach(function(mark){
+				editor.removeLineClass(mark,'background','line-error');
+			});
+			loop_error.length = 0;
+		}
+	}
+	function check_syntax_error(editor,code){
+		var s = document.createElement('script');
+		s.type = 'text/javascript';
+		s.appendChild(document.createTextNode("var __tmp_function__ = function () {\n" + code + "\n};"));	
+		s.code_type = editor.code_type;
+		window.onerror = function(message, source, lineno, colno, error){
+			document.body.removeChild(s);
+			window.onerror = null;				
+			var err_msg = message.split(':')[1];
+			--lineno;
+			cat('[' + lineno + ',' + colno + '] ' + err_msg);
+			
+			//render error
+			var errline = lineno - 1;
+			if(editor.code_type === 'setup'){
+				if (setup_error.indexOf(errline)===-1){
+					setup_editor.addLineClass(errline,'background','line-error');
+					setup_error.push(errline);
+				}
+			} else {
+				if (loop_error.indexOf(errline)===-1){
+					loop_editor.addLineClass(errline,'background','line-error');
+					loop_error.push(errline);
+				}
+			}
+			return true;
+		}
+		document.body.appendChild(s);//has to be called AFTER window.onerror = xxx		
+	}
+	function get_error_pos(stack){
+		var pos = stack.match(/<anonymous>:[0-9]+:[0-9]+/)[0].split(':');//CHROME ONLY right now
+		return [Number(pos[1])-3,Number(pos[2])];
+	}
+	function guard(code_type, code){		
+		var formated_code = 
+		'try{\n'+
+		code+
+		'}catch(e){\n'+
+			'var pos = get_error_pos(e.stack);\n'+
+			'if(e.message!=last_error_msg){cat("["+pos+"]"+e.message);last_error_msg=e.message;}\n'+
+			'var row=pos[0]-1;\n'+
+			'if(' + code_type + '_error.indexOf(row)===-1){\n'+
+				code_type + '_editor.addLineClass(row,"background","line-error");\n'+
+				code_type + '_error.push(row);\n'+
+			'}\n'+
+		'}\n';
+		return formated_code;
+	}
+	
+	function eval_loop(){
+		var code = loop_editor.getValue();
+		remove_syntax_error(loop_editor);
+		try{
+			eval('var tmp_loop = function(){\n\tbegin_loop();\n'+guard('loop',code)+'\n}');
+		}catch(e){
+			check_syntax_error(loop_editor,code);
+			//console.log(e.stack);
+			return false;
+		}
+		loop = tmp_loop;
+		restart_loop();
+		return true;
+	}
+	function eval_all(){
+		var code = setup_editor.getValue();
+		remove_syntax_error(setup_editor);
+		try{
+			eval('var tmp_setup = function(){\n'+guard('setup',code)+'\n}');
+		}catch(e){
+			check_syntax_error(setup_editor,code);	
+			return;
+		}
+		code = loop_editor.getValue();
+		remove_syntax_error(loop_editor);
+		try{
+			eval('var tmp_loop = function(){\n\tbegin_loop();\n'+guard('loop',code)+'\n}');
+		}catch(e){
+			check_syntax_error(loop_editor,code);
+			return;
+		}
+		setup = tmp_setup;
+		setup();
+		loop = tmp_loop;
+		restart_loop();
+	}
+
+	//events
+	$('#loop_ms').change(eval_loop);
+	$('#clear_log').click(clear_log);
+	$('#restart').click(eval_all);
+	$('#console_code').change(exec_console);
+	$('#canvas1').keydown(log_keydown);
+	$('#canvas1').keyup(log_keyup);
+	$('#canvas1').mousedown(log_mousedown);
+	$('#canvas1').mouseup(log_mouseup);
+	$('#canvas1').mousemove(function(e){
+		if(mouse_down){
+			log_mousedown(e);
+		}
+	});
+
+	//libraries
+	function abs(val){
+		return val<0?-val:val;
+	}
+	////print
+	function cat(s){
+		var l = $('#viewer_log');
+		var old = l.val();
+		l.val(old + '\n' + s);
+		$('#viewer_log').scrollTop($('#viewer_log')[0].scrollHeight);
+	}
+	////draw text
+	function txt(t,x,y,color){
+		if(ctx){
+			ctx.fillStyle = color;
+			ctx.fillText(t,x,y);
+		}
+	}
+	////draw image
+	function img(url,x,y,w,h){
+		if(!ctx) return;
+		url = process_url(url);
+		var i = img_cached[url];
+		if(i){
+			if(w>0&&h>0){
+				ctx.drawImage(i,x,y,w,h);
+			} else {
+				ctx.drawImage(i,x,y);
+			}
+		} else if (!img_caching[url]){
+			var image = new Image();
+			img_caching[url] = true;
+			image.onload = function(){
+				delete img_caching[url];
+				img_cached[url] = image;
+			}
+			image.src = url;
+		}
+	}
+	////draw rect
+	function rect(x,y,w,h,color){
+		if(!ctx) return;
+		ctx.fillStyle = color;
+		ctx.fillRect(x,y,w,h);
+	}
+	////draw sprite animation
+	var anim_caching = {};
+	var anim_cached = {};
+	var anim_time = {};
+	function anim4(url,row,x,y,w,h,t){
+		if(!ctx) return;
+		url = process_url(url);
+		if(row==='up'){
+			row=3;
+		}else if(row==='down'){
+			row=0;
+		}else if(row==='left'){
+			row=1;
+		}else if(row==='right'){
+			row=2;
+		}
+		var a = anim_cached[url];
+		if (a){
+			var src_w = a.width/4;
+			var src_h = a.height/4;
+			var dst_w = src_w;
+			var dst_h = src_h;
+			if(w>0 && h>0){//arg = w,h[,t]
+				dst_w = w;
+				dst_h = h;
+				if(t>0){
+					anim_time[url] = t;
+				}
+			} else if(w>0){//arg = t
+				anim_time[url] = w;
+			}
+			var t = (anim_time[url]/1000) % 1;
+			var frame_num = Math.floor(t * 4);
+			var sprite_x = (frame_num % 4) * src_w;
+			var sprite_y = row * src_h;
+			ctx.drawImage(a,sprite_x,sprite_y,src_w,src_h,x,y,dst_w,dst_h);
+			//step
+			anim_time[url] += Number(loop_time);
+		} else if (!anim_caching[url]){
+			var image = new Image();
+			anim_caching[url] = true;
+			image.onload = function(){
+				delete anim_caching[url];
+				anim_cached[url] = image;
+				anim_time[url] = 0;
+			}
+			image.src = url;
+		}
+	}
+	function anim4x4(url,x,y,w,h,t){
+		if(!ctx) return;
+		url = process_url(url);
+		var a = anim_cached[url];
+		if (a){
+			var src_w = a.width/4;
+			var src_h = a.height/4;
+			var dst_w = src_w;
+			var dst_h = src_h;
+			if(w>0 && h>0){//arg = w,h[,t]
+				dst_w = w;
+				dst_h = h;
+				if(t>0){
+					anim_time[url] = t;
+				}
+			} else if(w>0){//arg = t
+				anim_time[url] = w;
+			}
+			var t = (anim_time[url]/1000) % 1;
+			var frame_num = Math.floor(t * 16);
+			var sprite_x = (frame_num % 4) * src_w;
+			var sprite_y = Math.floor(frame_num / 4) * src_h;
+			ctx.drawImage(a,sprite_x,sprite_y,src_w,src_h,x,y,dst_w,dst_h);
+			//step
+			anim_time[url] += Number(loop_time);
+		} else if (!anim_caching[url]){
+			var image = new Image();
+			anim_caching[url] = true;
+			image.onload = function(){
+				delete anim_caching[url];
+				anim_cached[url] = image;
+				anim_time[url] = 0;
+			}
+			image.src = url;
+		}
+	}
+	////print help
+	function help(){
+		cat('cat(str): log string\n' +
+			'txt(str,x,y): draw text at (x,y)\n' +
+			'img(url,x,y[,w,h]): draw image url at (x,y), scale to(w,h)\n'
+			);
+	}
+	////is key pressed?
+	function key(k){
+		return key_down[k.toUpperCase()] ? true : false;
+	}
+	function mousex(){
+		if(mouse_down){
+			return mouse_x;
+		} else {
+			return 0;
+		}
+	}
+	function mousey(){
+		if(mouse_down){
+			return mouse_y;
+		} else {
+			return 0;
+		}
+	}
+	//load saved code
+	var saved_loop = localStorage['loop_code'];
+	if(saved_loop){
+		loop_editor.setValue(saved_loop);
+		eval_loop();
+	}
+	var saved_setup = localStorage['setup_code'];
+	if(saved_setup){
+		setup_editor.setValue(saved_setup);
+		eval_all();
+	}
+	//bingo
+	var last_time = Date.now();
+	var loop_time = 0;	
+	restart_loop();
+</script>
+</body>
+</html>
