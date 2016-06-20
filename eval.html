@@ -15,6 +15,7 @@
 <script src="codemirror/continuecomment.js"></script>
 <script src="codemirror/comment.js"></script>
 <script src="codemirror/javascript.js"></script>
+<script src="scripts/imgui.js"></script>
 <style type="text/css">
 .CodeMirror {border-top: 1px solid black; border-bottom: 1px solid black;}
 .line-error {
@@ -107,6 +108,7 @@
 	var mouse_down = false;
 	var mouse_x = 0;
 	var mouse_y = 0;
+	var mouse_wheel = 0;
 	var canvas = document.getElementById('canvas1');
 	var ctx;
 	if(canvas){
@@ -116,6 +118,9 @@
 			ctx.canvas.height = window.innerHeight;
 		}
 	}
+
+	//init IMGUI
+	imguiInit(ctx);
 
 	//default setup() and loop()
 	var setup = function(){
@@ -171,6 +176,9 @@
 	function log_mouseup(e){
 		mouse_down = false;
 	}
+	function log_mousewheel(e){
+		mouse_wheel = e.wheelDelta;
+	}
 
 
 	//main logic
@@ -198,6 +206,7 @@
 			dt = target_dt - overtime;
 			if (dt < 0) dt = 0;
 			loop();
+			mouse_wheel = 0;
 			begin_timer(dt);
 		}, delay);
 	}
@@ -314,6 +323,7 @@
 	$('#canvas1').keyup(log_keyup);
 	$('#canvas1').mousedown(log_mousedown);
 	$('#canvas1').mouseup(log_mouseup);
+	$('#canvas1').bind('mousewheel', log_mousewheel);
 	$('#canvas1').mousemove(function(e){
 		if(mouse_down){
 			log_mousedown(e);
@@ -475,6 +485,82 @@
 			return 0;
 		}
 	}
+	////GUI
+	//begin gui
+	function ui(x, y){
+		var btn = mouse_down ? 1 : 0;
+		imguiBeginFrame(x,y,btn,mouse_wheel);
+	}
+
+	//end gui
+	function _ui(){
+		imguiEndFrame();
+	}
+
+	//name has to be different!
+	var scroll_state = {};
+	function panel(name, x, y, w, h){
+		var scroll = scroll_state[name];
+		if (!scroll){
+			scroll = scroll_state[name] = {scroll:0};
+		}
+		imguiBeginScrollArea(name, x, y, w, h, scroll);
+	}
+
+	function _panel(){
+		imguiEndScrollArea();
+	}
+
+	function btn(text, disable){
+		return imguiButton(text, !disable);
+	}
+
+	function item(text, disable){
+		return imguiItem(text, !disable);
+	}
+
+	function check(text, checked, disable){
+		return imguiCheck(text, checked, !disable);
+	}
+
+	function collapse(text, subtext, checked, disable){
+		return imguiCollapse(text, subtext, checked, !disable);
+	}
+
+	function label(text){
+		imguiLabel(text);
+	}
+
+	function value(text){
+		imguiValue(text);
+	}
+
+	function slider(text, min, max, step, cb, disable){
+		var inc = (max - min) / step;
+		var s = {val:0};
+		var ret = imguiSlider(text, s, min, max, inc, !disable);
+		if (typeof cb === 'function') {
+			cb(s.val);
+		}
+		return ret;
+	}
+
+	function indent(){
+		imguiIndent();
+	}
+
+	function unindent(){
+		imguiUnindent();
+	}
+
+	function sep(){
+		imguiSeparator();
+	}
+
+	function sepline(){
+		imguiSeparatorLine();
+	}
+
 	//load saved code
 	var saved_loop = localStorage['loop_code'];
 	if(saved_loop){
