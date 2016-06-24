@@ -140,6 +140,9 @@ function imguiBeginFrame(mx, my, mbut, scroll)
 function imguiEndFrame()
 {
 	clearInput();
+	if (g_scissorOn) {
+		AddGfxCmdScissor(-1);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -167,41 +170,44 @@ var g_focusBottom = 0;
 var g_scrollId = 0;
 var g_insideScrollArea = false;
 var g_ctx = null;
+var g_scissorOn = false;
 
 function AddGfxCmdScissor(x, y, w, h)
 {
 	if (x >= 0) {
+		g_scissorOn = true;
 		g_ctx.save();
+		g_ctx.beginPath();
 		g_ctx.rect(x,y,w,h);
-		g_ctx.stroke();
 		g_ctx.clip();
 	} else {	// disable scissor
 		g_ctx.restore();
+		g_scissorOn = false;
 	}
 }
 
 function AddGfxCmdRect(x, y, w, h, color)
 {
-	g_ctx.save();
+	//g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.fillRect(x, y, w, h);
-	g_ctx.restore();
+	//g_ctx.restore();
 }
 
 function AddGfxCmdRoundedRect(x, y, w, h, r, color)
 {
-	g_ctx.save();
+	//g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.lineJoin = 'round';
 	g_ctx.lineWidth = r;
 	g_ctx.strokeRect(x+(r/2), y+(r/2), w-r, h-r);
 	g_ctx.fillRect(x+(r/2), y+(r/2), w-r, h-r);
-	g_ctx.restore();
+	//g_ctx.restore();
 }
 
 function AddGfxCmdTriangle(x, y, w, h, flags, color)
 {
-	g_ctx.save();
+	//g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.beginPath();
 	if (flags == 1) {	// draw |>
@@ -216,7 +222,7 @@ function AddGfxCmdTriangle(x, y, w, h, flags, color)
 	}
 	g_ctx.closePath();
 	g_ctx.stroke();
-	g_ctx.restore();
+	//g_ctx.restore();
 }
 
 function AddGfxCmdText(x, y, align, text, color)
@@ -228,10 +234,10 @@ function AddGfxCmdText(x, y, align, text, color)
 		x -= text_width;
 	}
 
-	g_ctx.save();
+	//g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.fillText(text, x, y);
-	g_ctx.restore();
+	//g_ctx.restore();
 }
 
 function SetRGBA(r, g, b, a)
@@ -242,29 +248,32 @@ function SetRGBA(r, g, b, a)
 ///
 function imguiBeginScrollArea(name, x, y, w, h, scroll_info)
 {
+	if (g_scissorOn) {
+		AddGfxCmdScissor(-1);
+	}
 	s_state.areaId++;
 	s_state.widgetId = 0;
 	g_scrollId = (s_state.areaId << 16) | s_state.widgetId;
 
 	s_state.widgetX = x + SCROLL_AREA_PADDING;
-	s_state.widgetY = y + h - AREA_HEADER + (scroll_info.scroll);
+	s_state.widgetY = y + AREA_HEADER - (scroll_info.scroll);
 	s_state.widgetW = w - SCROLL_AREA_PADDING * 4;
-	g_scrollTop = y - AREA_HEADER + h;
-	g_scrollBottom = y + SCROLL_AREA_PADDING;
+	g_scrollBottom = y - AREA_HEADER + h;
+	g_scrollTop = y + SCROLL_AREA_PADDING;
 	g_scrollRight = x + w - SCROLL_AREA_PADDING * 3;
 	g_scrollVal = scroll_info;
 
 	g_scrollAreaTop = s_state.widgetY;
 
-	g_focusTop = y - AREA_HEADER;
-	g_focusBottom = y - AREA_HEADER + h;
+	g_focusBottom = y + AREA_HEADER;
+	g_focusTop = y - AREA_HEADER + h;
 
 	g_insideScrollArea = inRect(x, y, w, h, false);
 	s_state.insideCurrentScroll = g_insideScrollArea;
 
 	AddGfxCmdRoundedRect(x, y, w, h, 6, SetRGBA(0, 0, 0, 192));
 
-	AddGfxCmdText(x + AREA_HEADER / 2, y + h - AREA_HEADER / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, name, SetRGBA(255, 255, 255, 128));
+	AddGfxCmdText(x + AREA_HEADER / 2, y/* + h*/ + AREA_HEADER / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, name, SetRGBA(255, 255, 255, 128));
 
 	AddGfxCmdScissor(x + SCROLL_AREA_PADDING, y + SCROLL_AREA_PADDING, w - SCROLL_AREA_PADDING * 4, h - AREA_HEADER - SCROLL_AREA_PADDING);
 
@@ -274,23 +283,25 @@ function imguiBeginScrollArea(name, x, y, w, h, scroll_info)
 function imguiEndScrollArea()
 {
 	// Disable scissoring.
-	AddGfxCmdScissor(-1, -1, -1, -1);
+	if (g_scissorOn) {
+		AddGfxCmdScissor(-1);
+	}
 
 	// Draw scroll bar
 	var x = g_scrollRight + SCROLL_AREA_PADDING / 2;
 	var y = g_scrollBottom;
 	var w = SCROLL_AREA_PADDING * 2;
-	var h = g_scrollTop - g_scrollBottom;
+	var h = g_scrollBottom - g_scrollTop;
 
 	var stop = g_scrollAreaTop;
 	var sbot = s_state.widgetY;
-	var sh = stop - sbot; // The scrollable area height.
+	var sh = sbot - stop; // The scrollable area height.
 
 	var barHeight = h / sh;
 
 	if (barHeight < 1)
 	{
-		var barY = (y - sbot) / sh;
+		var barY = (sbot - y) / sh;
 		if (barY < 0) barY = 0;
 		if (barY > 1) barY = 1;
 
@@ -334,7 +345,7 @@ function imguiEndScrollArea()
 		{
 			if (s_state.scroll)
 			{
-				g_scrollVal.scroll += 20 * s_state.scroll;
+				g_scrollVal.scroll -= 20 * s_state.scroll;
 				if (g_scrollVal.scroll < 0) g_scrollVal.scroll = 0;
 				if (g_scrollVal.scroll >(sh - h)) g_scrollVal.scroll = (sh - h);
 			}
@@ -349,19 +360,19 @@ function imguiButton(text, enabled)
 	var id = (s_state.areaId << 16) | s_state.widgetId;
 
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
+	var y = s_state.widgetY;
 	var w = s_state.widgetW;
 	var h = BUTTON_HEIGHT;
-	s_state.widgetY -= BUTTON_HEIGHT + DEFAULT_SPACING;
+	s_state.widgetY += BUTTON_HEIGHT + DEFAULT_SPACING;
 
 	var over = enabled && inRect(x, y, w, h);
 	var res = buttonLogic(id, over);
 
 	AddGfxCmdRoundedRect(x, y, w, h, BUTTON_HEIGHT / 2 - 1, SetRGBA(128, 128, 128, isActive(id) ? 196 : 96));
 	if (enabled)
-		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
 	else
-		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
 
 	return res;
 }
@@ -372,10 +383,10 @@ function imguiItem(text, enabled)
 	var id = (s_state.areaId << 16) | s_state.widgetId;
 
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
+	var y = s_state.widgetY;
 	var w = s_state.widgetW;
 	var h = BUTTON_HEIGHT;
-	s_state.widgetY -= BUTTON_HEIGHT + DEFAULT_SPACING;
+	s_state.widgetY += BUTTON_HEIGHT + DEFAULT_SPACING;
 
 	var over = enabled && inRect(x, y, w, h);
 	var res = buttonLogic(id, over);
@@ -384,9 +395,9 @@ function imguiItem(text, enabled)
 		AddGfxCmdRoundedRect(x, y, w, h, 2.0, SetRGBA(255, 196, 0, isActive(id) ? 196 : 96));
 
 	if (enabled)
-		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(255, 255, 255, 200));
 	else
-		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
 
 	return res;
 }
@@ -397,10 +408,10 @@ function imguiCheck(text, checked, enabled)
 	var id = (s_state.areaId << 16) | s_state.widgetId;
 
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
+	var y = s_state.widgetY;
 	var w = s_state.widgetW;
 	var h = BUTTON_HEIGHT;
-	s_state.widgetY -= BUTTON_HEIGHT + DEFAULT_SPACING;
+	s_state.widgetY += BUTTON_HEIGHT + DEFAULT_SPACING;
 
 	var over = enabled && inRect(x, y, w, h);
 	var res = buttonLogic(id, over);
@@ -417,9 +428,9 @@ function imguiCheck(text, checked, enabled)
 	}
 
 	if (enabled)
-		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
 	else
-		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
 
 	return res;
 }
@@ -430,10 +441,10 @@ function imguiCollapse(text, subtext, checked, enabled)
 	var id = (s_state.areaId << 16) | s_state.widgetId;
 
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
+	var y = s_state.widgetY;
 	var w = s_state.widgetW;
 	var h = BUTTON_HEIGHT;
-	s_state.widgetY -= BUTTON_HEIGHT; // + DEFAULT_SPACING;
+	s_state.widgetY += BUTTON_HEIGHT; // + DEFAULT_SPACING;
 
 	var cx = x + BUTTON_HEIGHT / 2 - CHECK_SIZE / 2;
 	var cy = y + BUTTON_HEIGHT / 2 - CHECK_SIZE / 2;
@@ -447,12 +458,12 @@ function imguiCollapse(text, subtext, checked, enabled)
 		AddGfxCmdTriangle(cx, cy, CHECK_SIZE, CHECK_SIZE, 1, SetRGBA(255, 255, 255, isActive(id) ? 255 : 200));
 
 	if (enabled)
-		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
 	else
-		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + BUTTON_HEIGHT, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
 
 	if (subtext)
-		AddGfxCmdText(x + w - BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, subtext, SetRGBA(255, 255, 255, 128));
+		AddGfxCmdText(x + w - BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, subtext, SetRGBA(255, 255, 255, 128));
 
 	return res;
 }
@@ -460,19 +471,19 @@ function imguiCollapse(text, subtext, checked, enabled)
 function imguiLabel(text)
 {
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
-	s_state.widgetY -= BUTTON_HEIGHT;
+	var y = s_state.widgetY;
+	s_state.widgetY += BUTTON_HEIGHT;
 	AddGfxCmdText(x, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(255, 255, 255, 255));
 }
 
 function imguiValue(text)
 {
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
+	var y = s_state.widgetY;
 	var w = s_state.widgetW;
-	s_state.widgetY -= BUTTON_HEIGHT;
+	s_state.widgetY += BUTTON_HEIGHT;
 
-	AddGfxCmdText(x + w - BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, text, SetRGBA(255, 255, 255, 200));
+	AddGfxCmdText(x + w - BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, text, SetRGBA(255, 255, 255, 200));
 }
 
 function imguiSliderFloat(text, slider, vmin, vmax, vinc, enabled)
@@ -481,10 +492,10 @@ function imguiSliderFloat(text, slider, vmin, vmax, vinc, enabled)
 	var id = (s_state.areaId << 16) | s_state.widgetId;
 
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
+	var y = s_state.widgetY;
 	var w = s_state.widgetW;
 	var h = SLIDER_HEIGHT;
-	s_state.widgetY -= SLIDER_HEIGHT + DEFAULT_SPACING;
+	s_state.widgetY += SLIDER_HEIGHT + DEFAULT_SPACING;
 
 	AddGfxCmdRoundedRect(x, y, w, h, 4.0, SetRGBA(0, 0, 0, 128));
 
@@ -525,13 +536,13 @@ function imguiSliderFloat(text, slider, vmin, vmax, vinc, enabled)
 
 	if (enabled)
 	{
-		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
 	}
 	else
 	{
-		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, SetRGBA(128, 128, 128, 200));
 	}
 
 	return res || valChanged;
@@ -544,10 +555,10 @@ function imguiSliderInt(text, slider, vmin, vmax, vinc, enabled)
 	var id = (s_state.areaId << 16) | s_state.widgetId;
 
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - BUTTON_HEIGHT;
+	var y = s_state.widgetY;
 	var w = s_state.widgetW;
 	var h = SLIDER_HEIGHT;
-	s_state.widgetY -= SLIDER_HEIGHT + DEFAULT_SPACING;
+	s_state.widgetY += SLIDER_HEIGHT + DEFAULT_SPACING;
 
 	AddGfxCmdRoundedRect(x, y, w, h, 4.0, SetRGBA(0, 0, 0, 128));
 
@@ -588,13 +599,13 @@ function imguiSliderInt(text, slider, vmin, vmax, vinc, enabled)
 
 	if (enabled)
 	{
-		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
 	}
 	else
 	{
-		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, SetRGBA(128, 128, 128, 200));
 	}
 
 	return res || valChanged;
@@ -627,16 +638,16 @@ function imguiUnindent()
 
 function imguiSeparator()
 {
-	s_state.widgetY -= DEFAULT_SPACING * 3;
+	s_state.widgetY += DEFAULT_SPACING * 3;
 }
 
 function imguiSeparatorLine()
 {
 	var x = s_state.widgetX;
-	var y = s_state.widgetY - DEFAULT_SPACING * 2;
+	var y = s_state.widgetY + DEFAULT_SPACING * 2;
 	var w = s_state.widgetW;
 	var h = 1;
-	s_state.widgetY -= DEFAULT_SPACING * 4;
+	s_state.widgetY += DEFAULT_SPACING * 4;
 
 	AddGfxCmdRect(x, y, w, h, SetRGBA(255, 255, 255, 32));
 }

@@ -206,6 +206,9 @@
 			dt = target_dt - overtime;
 			if (dt < 0) dt = 0;
 			loop();
+			if (g_scissorOn) {
+				imguiEndFrame();
+			}
 			mouse_wheel = 0;
 			begin_timer(dt);
 		}, delay);
@@ -487,9 +490,9 @@
 	}
 	////GUI
 	//begin gui
-	function ui(x, y){
+	function ui(){
 		var btn = mouse_down ? 1 : 0;
-		imguiBeginFrame(x,y,btn,mouse_wheel);
+		imguiBeginFrame(mouse_x,mouse_y,btn,mouse_wheel);
 	}
 
 	//end gui
