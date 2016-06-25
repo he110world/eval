@@ -20,7 +20,8 @@ var s_state =
 	widgetW : 100,
 	insideCurrentScroll : false,
 	areaId : 0,
-	widgetId : 0
+	widgetId : 0,
+	hover : 0
 }
 
 var IMGUI_MBUT_LEFT = 0x01;
@@ -135,6 +136,8 @@ function imguiBeginFrame(mx, my, mbut, scroll)
 
 	s_state.areaId = 1;
 	s_state.widgetId = 1;
+
+	s_state.hover = 0;
 }
 
 function imguiEndFrame()
@@ -192,26 +195,26 @@ function AddGfxCmdScissor(x, y, w, h)
 
 function AddGfxCmdRect(x, y, w, h, color)
 {
-	//g_ctx.save();
+	g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.fillRect(x, y, w, h);
-	//g_ctx.restore();
+	g_ctx.restore();
 }
 
 function AddGfxCmdRoundedRect(x, y, w, h, r, color)
 {
-	//g_ctx.save();
+	g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.lineJoin = 'round';
 	g_ctx.lineWidth = r;
-	g_ctx.strokeRect(x+(r/2), y+(r/2), w-r, h-r);
-	g_ctx.fillRect(x+(r/2), y+(r/2), w-r, h-r);
-	//g_ctx.restore();
+	g_ctx.strokeRect(x+r/2,y+r/2,w-r,h-r);
+	g_ctx.fillRect(x+r, y+r, w-2*r, h-2*r);
+	g_ctx.restore();
 }
 
 function AddGfxCmdTriangle(x, y, w, h, flags, color)
 {
-	//g_ctx.save();
+	g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.beginPath();
 	if (flags == 1) {	// draw |>
@@ -226,7 +229,7 @@ function AddGfxCmdTriangle(x, y, w, h, flags, color)
 	}
 	g_ctx.closePath();
 	g_ctx.stroke();
-	//g_ctx.restore();
+	g_ctx.restore();
 }
 
 function AddGfxCmdText(x, y, align, text, color)
@@ -238,18 +241,22 @@ function AddGfxCmdText(x, y, align, text, color)
 		x -= text_width;
 	}
 
-	//g_ctx.save();
+	g_ctx.save();
 	g_ctx.strokeStyle = g_ctx.fillStyle = color;
 	g_ctx.fillText(text, x, y);
-	//g_ctx.restore();
+	g_ctx.restore();
 }
 
 function SetRGBA(r, g, b, a)
 {
-	return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+	return 'rgba(' + r + ',' + g + ',' + b + ',' + a/255 + ')';
 }
 
 ///
+function imguiHover(){
+	return s_state.hover;
+}
+
 function imguiBeginScrollArea(name, x, y, w, h, scroll_info)
 {
 	if (g_scissorOn) {
@@ -273,6 +280,7 @@ function imguiBeginScrollArea(name, x, y, w, h, scroll_info)
 	g_focusTop = y - AREA_HEADER + h;
 
 	g_insideScrollArea = inRect(x, y, w, h, false);
+	s_state.hover = s_state.hover || g_insideScrollArea;
 	s_state.insideCurrentScroll = g_insideScrollArea;
 
 	AddGfxCmdRoundedRect(x, y, w, h, 6, SetRGBA(0, 0, 0, 192));
@@ -340,9 +348,9 @@ function imguiEndScrollArea()
 		AddGfxCmdRoundedRect(x, y, w, h, w / 2 - 1, SetRGBA(0, 0, 0, 196));
 		// Bar
 		if (isActive(hid))
-			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, SetRGBA(255, 255, 255, 196));
+			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, SetRGBA(255, 196, 0, 196));
 		else
-			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, isHot(hid) ? SetRGBA(255, 255, 255, 96) : SetRGBA(196, 196, 196, 64));
+			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, isHot(hid) ? SetRGBA(255, 196, 0, 96) : SetRGBA(196, 196, 196, 64));
 
 		// Handle mouse scrolling.
 		if (g_insideScrollArea) // && !anyActive())
@@ -477,7 +485,7 @@ function imguiLabel(text)
 	var x = s_state.widgetX;
 	var y = s_state.widgetY;
 	s_state.widgetY += BUTTON_HEIGHT;
-	AddGfxCmdText(x, y + BUTTON_HEIGHT / 2 - TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(255, 255, 255, 255));
+	AddGfxCmdText(x, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(255, 255, 255, 255));
 }
 
 function imguiValue(text)
