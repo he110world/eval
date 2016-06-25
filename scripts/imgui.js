@@ -389,6 +389,31 @@ function imguiButton(text, enabled)
 	return res;
 }
 
+
+function imguiIcon(url, enabled)
+{
+	s_state.widgetId++;
+	var id = (s_state.areaId << 16) | s_state.widgetId;
+
+	var x = s_state.widgetX;
+	var y = s_state.widgetY;
+	var w = 2 * BUTTON_HEIGHT;
+	var h = 2 * BUTTON_HEIGHT;
+	s_state.widgetY += 2 * BUTTON_HEIGHT + DEFAULT_SPACING;
+
+	var over = enabled && inRect(x, y, w, h);
+	var res = buttonLogic(id, over);
+
+	AddGfxCmdRoundedRect(x, y, w, h, BUTTON_HEIGHT / 2 - 1, SetRGBA(128, 128, 128, isActive(id) ? 196 : 96));
+	img(url,x+2,y+2,w-4,h-4);
+/*	if (enabled)
+		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+	else
+		AddGfxCmdText(x + BUTTON_HEIGHT / 2, y + BUTTON_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
+*/
+	return res;
+}
+
 function imguiItem(text, enabled)
 {
 	s_state.widgetId++;
