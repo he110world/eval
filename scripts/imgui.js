@@ -43,7 +43,7 @@ function isHot(id)
 
 function inRect(x, y, w, h, checkScroll)
 {
-	if(checkScroll !== undefined)
+	if(checkScroll === undefined)
 		checkScroll = true;
 	return (!checkScroll || s_state.insideCurrentScroll) && s_state.mx >= x && s_state.mx <= x + w && s_state.my >= y && s_state.my <= y + h;
 }
@@ -171,17 +171,21 @@ var g_scrollId = 0;
 var g_insideScrollArea = false;
 var g_ctx = null;
 var g_scissorOn = false;
-
+var clip = true;
 function AddGfxCmdScissor(x, y, w, h)
 {
 	if (x >= 0) {
 		g_scissorOn = true;
-		g_ctx.save();
-		g_ctx.beginPath();
-		g_ctx.rect(x,y,w,h);
-		g_ctx.clip();
+		if (clip) {
+			g_ctx.save();
+			g_ctx.beginPath();
+			g_ctx.rect(x,y,w,h);
+			g_ctx.clip();
+		}
 	} else {	// disable scissor
-		g_ctx.restore();
+		if (clip) {
+			g_ctx.restore();
+		}
 		g_scissorOn = false;
 	}
 }
@@ -259,7 +263,7 @@ function imguiBeginScrollArea(name, x, y, w, h, scroll_info)
 	s_state.widgetY = y + AREA_HEADER - (scroll_info.scroll);
 	s_state.widgetW = w - SCROLL_AREA_PADDING * 4;
 	g_scrollBottom = y - AREA_HEADER + h;
-	g_scrollTop = y + SCROLL_AREA_PADDING;
+	g_scrollTop = y + AREA_HEADER;
 	g_scrollRight = x + w - SCROLL_AREA_PADDING * 3;
 	g_scrollVal = scroll_info;
 
@@ -275,7 +279,7 @@ function imguiBeginScrollArea(name, x, y, w, h, scroll_info)
 
 	AddGfxCmdText(x + AREA_HEADER / 2, y/* + h*/ + AREA_HEADER / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, name, SetRGBA(255, 255, 255, 128));
 
-	AddGfxCmdScissor(x + SCROLL_AREA_PADDING, y + SCROLL_AREA_PADDING, w - SCROLL_AREA_PADDING * 4, h - AREA_HEADER - SCROLL_AREA_PADDING);
+	AddGfxCmdScissor(x + SCROLL_AREA_PADDING, y + AREA_HEADER, w - SCROLL_AREA_PADDING * 4, h - AREA_HEADER - SCROLL_AREA_PADDING);
 
 	return g_insideScrollArea;
 }
@@ -289,9 +293,9 @@ function imguiEndScrollArea()
 
 	// Draw scroll bar
 	var x = g_scrollRight + SCROLL_AREA_PADDING / 2;
-	var y = g_scrollBottom;
+	var y = g_scrollTop;
 	var w = SCROLL_AREA_PADDING * 2;
-	var h = g_scrollBottom - g_scrollTop;
+	var h = g_scrollBottom - g_scrollTop + AREA_HEADER - SCROLL_AREA_PADDING;
 
 	var stop = g_scrollAreaTop;
 	var sbot = s_state.widgetY;
@@ -308,7 +312,7 @@ function imguiEndScrollArea()
 		// Handle scroll bar logic.
 		var hid = g_scrollId;
 		var hx = x;
-		var hy = y + Math.floor(barY*h);
+		var hy = g_scrollBottom - Math.floor(barY*h) + AREA_HEADER - SCROLL_AREA_PADDING;
 		var hw = w;
 		var hh = Math.floor(barHeight*h);
 
@@ -328,7 +332,7 @@ function imguiEndScrollArea()
 				u = s_state.dragOrig + (s_state.my - s_state.dragY) / range;
 				if (u < 0) u = 0;
 				if (u > 1) u = 1;
-				g_scrollVal.scroll = ((1 - u) * (sh - h));
+				g_scrollVal.scroll = (u * (sh - h));
 			}
 		}
 
@@ -336,9 +340,9 @@ function imguiEndScrollArea()
 		AddGfxCmdRoundedRect(x, y, w, h, w / 2 - 1, SetRGBA(0, 0, 0, 196));
 		// Bar
 		if (isActive(hid))
-			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, SetRGBA(255, 196, 0, 196));
+			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, SetRGBA(255, 255, 255, 196));
 		else
-			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, isHot(hid) ? SetRGBA(255, 196, 0, 96) : SetRGBA(255, 255, 255, 64));
+			AddGfxCmdRoundedRect(hx, hy, hw, hh, w / 2 - 1, isHot(hid) ? SetRGBA(255, 255, 255, 96) : SetRGBA(196, 196, 196, 64));
 
 		// Handle mouse scrolling.
 		if (g_insideScrollArea) // && !anyActive())
@@ -523,7 +527,7 @@ function imguiSliderFloat(text, slider, vmin, vmax, vinc, enabled)
 			if (u < 0) u = 0;
 			if (u > 1) u = 1;
 			slider.val = vmin + u*(vmax - vmin);
-			slider.val = floorf(slider.val / vinc + 0.5)*vinc; // Snap to vinc
+			slider.val = Math.floor(slider.val / vinc + 0.5)*vinc; // Snap to vinc
 			m = Math.floor(u * range);
 			valChanged = true;
 		}
@@ -537,12 +541,12 @@ function imguiSliderFloat(text, slider, vmin, vmax, vinc, enabled)
 	if (enabled)
 	{
 		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, slider.val, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
 	}
 	else
 	{
 		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, slider.val, SetRGBA(128, 128, 128, 200));
 	}
 
 	return res || valChanged;
@@ -600,12 +604,12 @@ function imguiSliderInt(text, slider, vmin, vmax, vinc, enabled)
 	if (enabled)
 	{
 		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, slider.val, isHot(id) ? SetRGBA(255, 196, 0, 255) : SetRGBA(255, 255, 255, 200));
 	}
 	else
 	{
 		AddGfxCmdText(x + SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_LEFT, text, SetRGBA(128, 128, 128, 200));
-		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, msg, SetRGBA(128, 128, 128, 200));
+		AddGfxCmdText(x + w - SLIDER_HEIGHT / 2, y + SLIDER_HEIGHT / 2 + TEXT_HEIGHT / 2, TEXT_ALIGN_RIGHT, slider.val, SetRGBA(128, 128, 128, 200));
 	}
 
 	return res || valChanged;
